@@ -108,9 +108,11 @@ int ivdc_threshold_line = 0;
 module_param(ivdc_threshold_line, int, S_IRUGO);
 MODULE_PARM_DESC(ivdc_threshold_line, "ivdc threshold line");
 
-extern uint16_t tx_isp_core_ioctl_mask[11];
+// Zeile 111 - extern entfernen, Definition + Initialisierung:
+uint16_t tx_isp_core_ioctl_mask[11] = {0};
 module_param_array(tx_isp_core_ioctl_mask, short, NULL, 0644);
 MODULE_PARM_DESC(tx_isp_core_ioctl_mask, "isp ioctl calls mask");
+EXPORT_SYMBOL(tx_isp_core_ioctl_mask);  // <- neu hinzufügen
 
 char *sclk_name[3] = {"mpll", "vpll", "sclka"};
 
