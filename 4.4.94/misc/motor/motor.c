@@ -353,25 +353,33 @@ static long motor_ops_move(struct motor_device *mdev, int x, int y)
 	int times = 1;
 	int value = 0;
 
-	/* check x value */
+	/* check x value (only if endstop GPIOs are configured) */
 	if(x > 0){
-		value = gpio_get_value(mdev->motors[HORIZONTAL_MOTOR].pdata->motor_max_gpio);
-		if(value == mdev->motors[HORIZONTAL_MOTOR].pdata->motor_gpio_level)
-			x = 0;
+		if(mdev->motors[HORIZONTAL_MOTOR].pdata->motor_max_gpio != -1){
+			value = gpio_get_value(mdev->motors[HORIZONTAL_MOTOR].pdata->motor_max_gpio);
+			if(value == mdev->motors[HORIZONTAL_MOTOR].pdata->motor_gpio_level)
+				x = 0;
+		}
 	}else{
-		value = gpio_get_value(mdev->motors[HORIZONTAL_MOTOR].pdata->motor_min_gpio);
-		if(value == mdev->motors[HORIZONTAL_MOTOR].pdata->motor_gpio_level)
-			x = 0;
+		if(mdev->motors[HORIZONTAL_MOTOR].pdata->motor_min_gpio != -1){
+			value = gpio_get_value(mdev->motors[HORIZONTAL_MOTOR].pdata->motor_min_gpio);
+			if(value == mdev->motors[HORIZONTAL_MOTOR].pdata->motor_gpio_level)
+				x = 0;
+		}
 	}
-	/* check y value */
+	/* check y value (only if endstop GPIOs are configured) */
 	if(y > 0){
-		value = gpio_get_value(mdev->motors[VERTICAL_MOTOR].pdata->motor_max_gpio);
-		if(value == mdev->motors[VERTICAL_MOTOR].pdata->motor_gpio_level)
-			y = 0;
+		if(mdev->motors[VERTICAL_MOTOR].pdata->motor_max_gpio != -1){
+			value = gpio_get_value(mdev->motors[VERTICAL_MOTOR].pdata->motor_max_gpio);
+			if(value == mdev->motors[VERTICAL_MOTOR].pdata->motor_gpio_level)
+				y = 0;
+		}
 	}else{
-		value = gpio_get_value(mdev->motors[VERTICAL_MOTOR].pdata->motor_min_gpio);
-		if(value == mdev->motors[VERTICAL_MOTOR].pdata->motor_gpio_level)
-			y = 0;
+		if(mdev->motors[VERTICAL_MOTOR].pdata->motor_min_gpio != -1){
+			value = gpio_get_value(mdev->motors[VERTICAL_MOTOR].pdata->motor_min_gpio);
+			if(value == mdev->motors[VERTICAL_MOTOR].pdata->motor_gpio_level)
+				y = 0;
+		}
 	}
 
 	x_dir = x > 0 ? MOTOR_MOVE_RIGHT_UP : (x < 0 ? MOTOR_MOVE_LEFT_DOWN: MOTOR_MOVE_STOP);
