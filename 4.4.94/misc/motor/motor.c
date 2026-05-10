@@ -54,30 +54,70 @@
 
 #define JZ_MOTOR_DRIVER_VERSION "H20171206a"
 
+extern int jzgpio_ctrl_pull(enum gpio_port port, int enable_pull, unsigned long pins);
 
-extern int jzgpio_ctrl_pull(enum gpio_port port, int enable_pull,unsigned long pins);
+/* Konfigurierbare Motorparameter */
+static int hst1 = -1;
+static int hst2 = -1;
+static int hst3 = -1;
+static int hst4 = -1;
+static int vst1 = -1;
+static int vst2 = -1;
+static int vst3 = -1;
+static int vst4 = -1;
+static unsigned int hmaxstep = 3700;
+static unsigned int vmaxstep = 1000;
+static int tcu_channels = 2;
+static int motor_switch_gpio = -1;
+static int invert_gpio_dir = 0;
 
+module_param(hst1, int, S_IRUGO);
+MODULE_PARM_DESC(hst1, "Pan motor Phase A GPIO");
+module_param(hst2, int, S_IRUGO);
+MODULE_PARM_DESC(hst2, "Pan motor Phase B GPIO");
+module_param(hst3, int, S_IRUGO);
+MODULE_PARM_DESC(hst3, "Pan motor Phase C GPIO");
+module_param(hst4, int, S_IRUGO);
+MODULE_PARM_DESC(hst4, "Pan motor Phase D GPIO");
+module_param(vst1, int, S_IRUGO);
+MODULE_PARM_DESC(vst1, "Tilt motor Phase A GPIO");
+module_param(vst2, int, S_IRUGO);
+MODULE_PARM_DESC(vst2, "Tilt motor Phase B GPIO");
+module_param(vst3, int, S_IRUGO);
+MODULE_PARM_DESC(vst3, "Tilt motor Phase C GPIO");
+module_param(vst4, int, S_IRUGO);
+MODULE_PARM_DESC(vst4, "Tilt motor Phase D GPIO");
+module_param(hmaxstep, int, S_IRUGO);
+MODULE_PARM_DESC(hmaxstep, "Pan motor max steps");
+module_param(vmaxstep, int, S_IRUGO);
+MODULE_PARM_DESC(vmaxstep, "Tilt motor max steps");
+module_param(tcu_channels, int, S_IRUGO);
+MODULE_PARM_DESC(tcu_channels, "TCU channels");
+module_param(motor_switch_gpio, int, S_IRUGO);
+MODULE_PARM_DESC(motor_switch_gpio, "Motor power switch GPIO (-1 = disabled)");
+module_param(invert_gpio_dir, int, S_IRUGO);
+MODULE_PARM_DESC(invert_gpio_dir, "Invert GPIO direction logic");
 
 struct motor_platform_data motors_pdata[HAS_MOTOR_CNT] = {
 	{
 		.name = "Horizontal motor",
 		.motor_min_gpio		= HORIZONTAL_MIN_GPIO,
-		.motor_max_gpio 	= HORIZONTAL_MAX_GPIO,
+		.motor_max_gpio		= HORIZONTAL_MAX_GPIO,
 		.motor_gpio_level	= HORIZONTAL_GPIO_LEVEL,
-		.motor_st1_gpio		= HORIZONTAL_ST1_GPIO,
-		.motor_st2_gpio		= HORIZONTAL_ST2_GPIO,
-		.motor_st3_gpio		= HORIZONTAL_ST3_GPIO,
-		.motor_st4_gpio		= HORIZONTAL_ST4_GPIO,
+		.motor_st1_gpio		= 0,
+		.motor_st2_gpio		= 0,
+		.motor_st3_gpio		= 0,
+		.motor_st4_gpio		= 0,
 	},
 	{
 		.name = "Vertical motor",
 		.motor_min_gpio		= VERTICAL_MIN_GPIO,
-		.motor_max_gpio 	= VERTICAL_MAX_GPIO,
+		.motor_max_gpio		= VERTICAL_MAX_GPIO,
 		.motor_gpio_level	= VERTICAL_GPIO_LEVEL,
-		.motor_st1_gpio		= VERTICAL_ST1_GPIO,
-		.motor_st2_gpio		= VERTICAL_ST2_GPIO,
-		.motor_st3_gpio		= VERTICAL_ST3_GPIO,
-		.motor_st4_gpio		= VERTICAL_ST4_GPIO,
+		.motor_st1_gpio		= 0,
+		.motor_st2_gpio		= 0,
+		.motor_st3_gpio		= 0,
+		.motor_st4_gpio		= 0,
 	},
 };
 
@@ -741,6 +781,16 @@ static int motor_probe(struct platform_device *pdev)
 	spin_lock_init(&mdev->slock);
 
 	platform_set_drvdata(pdev, mdev);
+
+	/* GPIO-Pins aus Modulparametern uebernehmen */
+	motors_pdata[HORIZONTAL_MOTOR].motor_st1_gpio = hst1;
+	motors_pdata[HORIZONTAL_MOTOR].motor_st2_gpio = hst2;
+	motors_pdata[HORIZONTAL_MOTOR].motor_st3_gpio = hst3;
+	motors_pdata[HORIZONTAL_MOTOR].motor_st4_gpio = hst4;
+	motors_pdata[VERTICAL_MOTOR].motor_st1_gpio   = (vst1 != -1) ? vst1 : hst1;
+	motors_pdata[VERTICAL_MOTOR].motor_st2_gpio   = (vst2 != -1) ? vst2 : hst2;
+	motors_pdata[VERTICAL_MOTOR].motor_st3_gpio   = (vst3 != -1) ? vst3 : hst3;
+	motors_pdata[VERTICAL_MOTOR].motor_st4_gpio   = (vst4 != -1) ? vst4 : hst4;
 
 	for(i = 0; i < HAS_MOTOR_CNT; i++) {
 		motor = &(mdev->motors[i]);
