@@ -13,7 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+ 
 #include <linux/mm.h>
 #include <linux/fs.h>
 #include <linux/clk.h>
@@ -35,42 +35,42 @@
 #include <linux/platform_device.h>
 #ifdef CONFIG_SOC_T31
 #include <dt-bindings/interrupt-controller/t31-irq.h>
-
+ 
 #endif
 #ifdef CONFIG_SOC_T40
 #include <dt-bindings/interrupt-controller/t40-irq.h>
-
+ 
 #endif
-
+ 
 #include <soc/base.h>
 #include <soc/extal.h>
-
+ 
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/uaccess.h>
 #include <asm/cacheflush.h>
 #include <soc/gpio.h>
 #include "motor.h"
-
+ 
 #define JZ_MOTOR_DRIVER_VERSION "H20171206a"
-
+ 
 extern int jzgpio_ctrl_pull(enum gpio_port port, int enable_pull, unsigned long pins);
-
-/* Konfigurierbare Motorparameter */
-static int hst1 = -1;
-static int hst2 = -1;
-static int hst3 = -1;
-static int hst4 = -1;
+ 
+/* Configurable motor GPIO parameters */
+static int hst1 = HORIZONTAL_ST1_GPIO;
+static int hst2 = HORIZONTAL_ST2_GPIO;
+static int hst3 = HORIZONTAL_ST3_GPIO;
+static int hst4 = HORIZONTAL_ST4_GPIO;
 static int vst1 = -1;
 static int vst2 = -1;
 static int vst3 = -1;
 static int vst4 = -1;
-static unsigned int hmaxstep = 3700;
-static unsigned int vmaxstep = 1000;
-static int tcu_channels = 2;
+static int hmaxstep = 3700;
+static int vmaxstep = 1000;
+static int motor_bind_channel = 2;
 static int motor_switch_gpio = -1;
 static int invert_gpio_dir = 0;
-
+ 
 module_param(hst1, int, S_IRUGO);
 MODULE_PARM_DESC(hst1, "Pan motor Phase A GPIO");
 module_param(hst2, int, S_IRUGO);
@@ -80,29 +80,29 @@ MODULE_PARM_DESC(hst3, "Pan motor Phase C GPIO");
 module_param(hst4, int, S_IRUGO);
 MODULE_PARM_DESC(hst4, "Pan motor Phase D GPIO");
 module_param(vst1, int, S_IRUGO);
-MODULE_PARM_DESC(vst1, "Tilt motor Phase A GPIO");
+MODULE_PARM_DESC(vst1, "Tilt motor Phase A GPIO (-1 = same as hst1)");
 module_param(vst2, int, S_IRUGO);
-MODULE_PARM_DESC(vst2, "Tilt motor Phase B GPIO");
+MODULE_PARM_DESC(vst2, "Tilt motor Phase B GPIO (-1 = same as hst2)");
 module_param(vst3, int, S_IRUGO);
-MODULE_PARM_DESC(vst3, "Tilt motor Phase C GPIO");
+MODULE_PARM_DESC(vst3, "Tilt motor Phase C GPIO (-1 = same as hst3)");
 module_param(vst4, int, S_IRUGO);
-MODULE_PARM_DESC(vst4, "Tilt motor Phase D GPIO");
+MODULE_PARM_DESC(vst4, "Tilt motor Phase D GPIO (-1 = same as hst4)");
 module_param(hmaxstep, int, S_IRUGO);
 MODULE_PARM_DESC(hmaxstep, "Pan motor max steps");
 module_param(vmaxstep, int, S_IRUGO);
 MODULE_PARM_DESC(vmaxstep, "Tilt motor max steps");
-module_param(tcu_channels, int, S_IRUGO);
-MODULE_PARM_DESC(tcu_channels, "TCU channels");
+module_param(motor_bind_channel, int, S_IRUGO);
+MODULE_PARM_DESC(motor_bind_channel, "TCU channel to bind (default 2)");
 module_param(motor_switch_gpio, int, S_IRUGO);
 MODULE_PARM_DESC(motor_switch_gpio, "Motor power switch GPIO (-1 = disabled)");
 module_param(invert_gpio_dir, int, S_IRUGO);
-MODULE_PARM_DESC(invert_gpio_dir, "Invert GPIO direction logic");
-
+MODULE_PARM_DESC(invert_gpio_dir, "Invert GPIO direction logic (0/1)");
+ 
 struct motor_platform_data motors_pdata[HAS_MOTOR_CNT] = {
 	{
 		.name = "Horizontal motor",
 		.motor_min_gpio		= HORIZONTAL_MIN_GPIO,
-		.motor_max_gpio		= HORIZONTAL_MAX_GPIO,
+		.motor_max_gpio 	= HORIZONTAL_MAX_GPIO,
 		.motor_gpio_level	= HORIZONTAL_GPIO_LEVEL,
 		.motor_st1_gpio		= 0,
 		.motor_st2_gpio		= 0,
@@ -112,7 +112,7 @@ struct motor_platform_data motors_pdata[HAS_MOTOR_CNT] = {
 	{
 		.name = "Vertical motor",
 		.motor_min_gpio		= VERTICAL_MIN_GPIO,
-		.motor_max_gpio		= VERTICAL_MAX_GPIO,
+		.motor_max_gpio 	= VERTICAL_MAX_GPIO,
 		.motor_gpio_level	= VERTICAL_GPIO_LEVEL,
 		.motor_st1_gpio		= 0,
 		.motor_st2_gpio		= 0,
@@ -120,7 +120,7 @@ struct motor_platform_data motors_pdata[HAS_MOTOR_CNT] = {
 		.motor_st4_gpio		= 0,
 	},
 };
-
+ 
 static void motor_set_default(struct motor_device *mdev)
 {
 	int index = 0;
@@ -140,7 +140,7 @@ static void motor_set_default(struct motor_device *mdev)
 	}
 	return;
 }
-
+ 
 static unsigned char step_8[8] = {
 	0x08,
 	0x0c,
@@ -151,13 +151,13 @@ static unsigned char step_8[8] = {
 	0x01,
 	0x09
 };
-
+ 
 static void motor_move_step(struct motor_device *mdev)
 {
 	struct motor_driver *motor = NULL;
 	int index = 0;
 	int step = 0;
-
+ 
 	for(index = 0; index < HAS_MOTOR_CNT; index++){
 		motor =  &mdev->motors[index];
 		if(motor->state != MOTOR_OPS_STOP){
@@ -185,10 +185,10 @@ static void motor_move_step(struct motor_device *mdev)
 			motor->total_steps++;
 		}
 	}
-
+ 
 	return;
 }
-
+ 
 static irqreturn_t jz_timer_interrupt(int irq, void *dev_id)
 {
 	struct motor_device *mdev = dev_id;
@@ -196,14 +196,14 @@ static irqreturn_t jz_timer_interrupt(int irq, void *dev_id)
 	struct motor_move *cur = &mdev->cur_move;
 	struct motor_driver *motors = mdev->motors;
 	int flag = 0;
-
+ 
 	if(motors[HORIZONTAL_MOTOR].state == MOTOR_OPS_STOP
 			&& motors[VERTICAL_MOTOR].state == MOTOR_OPS_STOP){
 		mdev->dev_state = MOTOR_OPS_STOP;
 		motor_move_step(mdev);
 		return IRQ_HANDLED;
 	}
-
+ 
 	if(mdev->dev_state == MOTOR_OPS_CRUISE){
 		motors[HORIZONTAL_MOTOR].cur_steps += motors[HORIZONTAL_MOTOR].move_dir;
 		motors[VERTICAL_MOTOR].cur_steps += motors[VERTICAL_MOTOR].move_dir;
@@ -220,7 +220,7 @@ static irqreturn_t jz_timer_interrupt(int irq, void *dev_id)
 				cur->one.y++;
 				flag = 1;
 			}
-
+ 
 			if(flag){
 				flag = 0;
 				motor_move_step(mdev);
@@ -231,7 +231,7 @@ static irqreturn_t jz_timer_interrupt(int irq, void *dev_id)
 				cur->times++;
 			}
 		}
-
+ 
 		if(mdev->cur_move.times == mdev->dst_move.times &&
 				mdev->cur_move.one.x == 0 && mdev->cur_move.one.y == 0){
 			motors[HORIZONTAL_MOTOR].state = MOTOR_OPS_STOP;
@@ -240,15 +240,14 @@ static irqreturn_t jz_timer_interrupt(int irq, void *dev_id)
 	}
 	return IRQ_HANDLED;
 }
-
+ 
 static void gpio_keys_min_timer(unsigned long _data)
 {
 	struct motor_driver *motor = (struct motor_driver *)_data;
 	int value = 0;
-    value = gpio_get_value(motor->pdata->motor_min_gpio);
-
+	value = gpio_get_value(motor->pdata->motor_min_gpio);
+ 
 	if(value == motor->pdata->motor_gpio_level){
-	//	printk("%s min %d\n",motor->pdata->name,__LINE__);
 		if(motor->state == MOTOR_OPS_RESET){
 			motor->reset_min_pos = 1;
 			if(motor->reset_max_pos && motor->reset_min_pos){
@@ -266,32 +265,30 @@ static void gpio_keys_min_timer(unsigned long _data)
 			}
 		}else
 			motor->move_dir = MOTOR_MOVE_RIGHT_UP;
-
-
+ 
 		motor->cur_steps = 0;
 		motor->min_pos_irq_cnt++;
-		//printk("%s min; cur_steps = %d max_steps = %d\n", motor->pdata->name,motor->cur_steps, motor->max_steps);
 	}
 }
-
+ 
 static irqreturn_t motor_min_gpio_interrupt(int irq, void *dev_id)
 {
 	struct motor_driver *motor = dev_id;
-
+ 
 	mod_timer(&motor->min_timer,
 			jiffies + msecs_to_jiffies(5));
-
+ 
 	return IRQ_HANDLED;
 }
-
+ 
 static void gpio_keys_max_timer(unsigned long _data)
 {
 	struct motor_driver *motor = (struct motor_driver *)_data;
 	int value = 0;
-     value = gpio_get_value(motor->pdata->motor_max_gpio);
-
+	value = gpio_get_value(motor->pdata->motor_max_gpio);
+ 
 	if(value == motor->pdata->motor_gpio_level){
-
+ 
 		if(motor->state == MOTOR_OPS_RESET){
 			motor->reset_max_pos = 1;
 			if(motor->reset_max_pos && motor->reset_min_pos){
@@ -311,20 +308,17 @@ static void gpio_keys_max_timer(unsigned long _data)
 			motor->move_dir = MOTOR_MOVE_LEFT_DOWN;
 		motor->cur_steps = motor->max_steps;
 		motor->max_pos_irq_cnt++;
-		//printk("%s max; cur_steps = %d max_steps = %d\n", motor->pdata->name,motor->cur_steps, motor->max_steps);
 	}
 }
-
-
+ 
 static irqreturn_t motor_max_gpio_interrupt(int irq, void *dev_id)
 {
 	struct motor_driver *motor = dev_id;
 	mod_timer(&motor->max_timer,
 			jiffies + msecs_to_jiffies(5));
-   	return IRQ_HANDLED;
+	return IRQ_HANDLED;
 }
-
-
+ 
 static inline int calc_max_divisor(int a, int b)
 {
 	int r = 0;
@@ -335,7 +329,7 @@ static inline int calc_max_divisor(int a, int b)
 	}
 	return a;
 }
-
+ 
 static long motor_ops_move(struct motor_device *mdev, int x, int y)
 {
 	struct motor_driver *motors = mdev->motors;
@@ -346,7 +340,7 @@ static long motor_ops_move(struct motor_device *mdev, int x, int y)
 	int y1 = 0;
 	int times = 1;
 	int value = 0;
-
+ 
 	/* check x value */
 	if(x > 0){
 		value = gpio_get_value(mdev->motors[HORIZONTAL_MOTOR].pdata->motor_max_gpio);
@@ -367,12 +361,12 @@ static long motor_ops_move(struct motor_device *mdev, int x, int y)
 		if(value == mdev->motors[VERTICAL_MOTOR].pdata->motor_gpio_level)
 			y = 0;
 	}
-
+ 
 	x_dir = x > 0 ? MOTOR_MOVE_RIGHT_UP : (x < 0 ? MOTOR_MOVE_LEFT_DOWN: MOTOR_MOVE_STOP);
 	y_dir = y > 0 ? MOTOR_MOVE_RIGHT_UP : (y < 0 ? MOTOR_MOVE_LEFT_DOWN: MOTOR_MOVE_STOP);
 	x1 = x < 0 ? 0 - x : x;
 	y1 = y < 0 ? 0 - y : y;
-
+ 
 	if((x1 + y1) == 0){
 		return 0;
 	}else if(x1 == 0){
@@ -381,7 +375,7 @@ static long motor_ops_move(struct motor_device *mdev, int x, int y)
 		times = 1;
 	}else
 		times = calc_max_divisor(x1, y1);
-
+ 
 	mutex_lock(&mdev->dev_mutex);
 	spin_lock_irqsave(&mdev->slock, flags);
 	mdev->dev_state = MOTOR_OPS_NORMAL;
@@ -397,13 +391,11 @@ static long motor_ops_move(struct motor_device *mdev, int x, int y)
 	motors[VERTICAL_MOTOR].move_dir = y_dir;
 	spin_unlock_irqrestore(&mdev->slock, flags);
 	mutex_unlock(&mdev->dev_mutex);
-	//printk("%s%d x=%d y=%d t=%d\n",__func__,__LINE__,mdev->dst_move.one.x,mdev->dst_move.one.y,mdev->dst_move.times);
-	//printk("x_dir=%d,y_dir=%d\n",x_dir,y_dir);
 	ingenic_tcu_counter_begin(mdev->tcu);
-
+ 
 	return 0;
 }
-
+ 
 static void motor_ops_stop(struct motor_device *mdev)
 {
 	unsigned long flags;
@@ -419,7 +411,7 @@ static void motor_ops_stop(struct motor_device *mdev)
 	motor_move_step(mdev);
 	return;
 }
-
+ 
 static long motor_ops_cruise(struct motor_device *mdev)
 {
 	unsigned long flags;
@@ -434,7 +426,7 @@ static long motor_ops_cruise(struct motor_device *mdev)
 	ingenic_tcu_counter_begin(mdev->tcu);
 	return 0;
 }
-
+ 
 static long motor_ops_goback(struct motor_device *mdev)
 {
 	struct motor_driver *motors = mdev->motors;
@@ -444,10 +436,9 @@ static long motor_ops_goback(struct motor_device *mdev)
 	sy = motors[VERTICAL_MOTOR].max_steps >> 1;
 	cx = motors[HORIZONTAL_MOTOR].cur_steps;
 	cy = motors[VERTICAL_MOTOR].cur_steps;
-	//printk("sx=%d,sy=%d,cx=%d,cy=%d\n",sx,sy,cx,cy);
 	return motor_ops_move(mdev, sx-cx, sy-cy);
 }
-
+ 
 static void motor_get_message(struct motor_device *mdev, struct motor_message *msg)
 {
 	struct motor_driver *motors = mdev->motors;
@@ -460,7 +451,7 @@ static void motor_get_message(struct motor_device *mdev, struct motor_message *m
 		msg->status = MOTOR_IS_RUNNING;
 	return;
 }
-
+ 
 static inline int motor_ops_reset_check_params(struct motor_reset_data *rdata)
 {
 	if(rdata->x_max_steps == 0 || rdata->y_max_steps == 0){
@@ -470,7 +461,7 @@ static inline int motor_ops_reset_check_params(struct motor_reset_data *rdata)
 		return -1;
 	return 0;
 }
-
+ 
 static long motor_ops_reset(struct motor_device *mdev, struct motor_reset_data *rdata)
 {
 	unsigned long flags;
@@ -479,13 +470,12 @@ static long motor_ops_reset(struct motor_device *mdev, struct motor_reset_data *
 	int value = 0;
 	int times = 0;
 	struct motor_message msg;
-	//printk("%s%d\n",__func__,__LINE__);
-
+ 
 	if(mdev == NULL || rdata == NULL){
 		printk("ERROR: the parameters of %s is wrong!!\n",__func__);
 		return -EPERM;
 	}
-
+ 
 	if(motor_ops_reset_check_params(rdata) == 0){
 		/* app set max steps and current pos */
 		mutex_lock(&mdev->dev_mutex);
@@ -524,7 +514,7 @@ static long motor_ops_reset(struct motor_device *mdev, struct motor_reset_data *
 		spin_unlock_irqrestore(&mdev->slock, flags);
 		mutex_unlock(&mdev->dev_mutex);
 		ingenic_tcu_counter_begin(mdev->tcu);
-
+ 
 		for(index = 0; index < HAS_MOTOR_CNT; index++){
 			do{
 				ret = wait_for_completion_interruptible_timeout(&mdev->motors[index].reset_completion, msecs_to_jiffies(150000));
@@ -535,12 +525,8 @@ static long motor_ops_reset(struct motor_device *mdev, struct motor_reset_data *
 			}while(ret == -ERESTARTSYS);
 		}
 	}
-	//printk("x_max = %d, y_max = %d\n", mdev->motors[HORIZONTAL_MOTOR].max_steps,
-			//mdev->motors[VERTICAL_MOTOR].max_steps);
 	ret = motor_ops_goback(mdev);
-	/*ret =  motor_ops_move(mdev, (mdev->motors[HORIZONTAL_MOTOR].max_steps) >> 1, */
-			/*(mdev->motors[VERTICAL_MOTOR].max_steps) >> 1);*/
-
+ 
 	do{
 		msleep(10);
 		motor_get_message(mdev, &msg);
@@ -552,20 +538,20 @@ static long motor_ops_reset(struct motor_device *mdev, struct motor_reset_data *
 		}
 	}while(msg.status == MOTOR_IS_RUNNING);
 	ret = 0;
-
+ 
 	/* sync data */
-	 rdata->x_max_steps	= mdev->motors[HORIZONTAL_MOTOR].max_steps;
-	 rdata->x_cur_step	= mdev->motors[HORIZONTAL_MOTOR].cur_steps;
-	 rdata->y_max_steps	= mdev->motors[VERTICAL_MOTOR].max_steps;
-	 rdata->y_cur_step	= mdev->motors[VERTICAL_MOTOR].cur_steps;
-
+	rdata->x_max_steps	= mdev->motors[HORIZONTAL_MOTOR].max_steps;
+	rdata->x_cur_step	= mdev->motors[HORIZONTAL_MOTOR].cur_steps;
+	rdata->y_max_steps	= mdev->motors[VERTICAL_MOTOR].max_steps;
+	rdata->y_cur_step	= mdev->motors[VERTICAL_MOTOR].cur_steps;
+ 
 exit:
 	ingenic_tcu_counter_stop(mdev->tcu);
 	msleep(10);
 	motor_set_default(mdev);
 	return ret;
 }
-
+ 
 static int motor_speed(struct motor_device *mdev, int speed)
 {
 	__asm__("ssnop");
@@ -574,12 +560,12 @@ static int motor_speed(struct motor_device *mdev, int speed)
 		return -1;
 	}
 	__asm__("ssnop");
-
+ 
 	mdev->tcu_speed = speed;
 	ingenic_tcu_set_period(mdev->tcu->cib.id,(24000000 / 64 / mdev->tcu_speed));
 	return 0;
 }
-
+ 
 static int motor_open(struct inode *inode, struct file *file)
 {
 	struct miscdevice *dev = file->private_data;
@@ -591,10 +577,10 @@ static int motor_open(struct inode *inode, struct file *file)
 	}else{
 		mdev->flag = 1;
 	}
-
+ 
 	return ret;
 }
-
+ 
 static int motor_release(struct inode *inode, struct file *file)
 {
 	struct miscdevice *dev = file->private_data;
@@ -603,22 +589,21 @@ static int motor_release(struct inode *inode, struct file *file)
 	mdev->flag = 0;
 	return 0;
 }
-
+ 
 static long motor_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct miscdevice *dev = filp->private_data;
 	struct motor_device *mdev = container_of(dev, struct motor_device, misc_dev);
 	long ret = 0;
-
+ 
 	if(mdev->flag == 0){
 		printk("Please Open /dev/motor Firstly\n");
 		return -EPERM;
 	}
-
+ 
 	switch (cmd) {
 		case MOTOR_STOP:
 			motor_ops_stop(mdev);
-			/*printk("MOTOR_STOP!!!!!!!!!!!!!!!!!!!\n");*/
 			break;
 		case MOTOR_RESET:
 			{
@@ -642,7 +627,6 @@ static long motor_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 						return -EFAULT;
 					}
 				}
-				/*printk("MOTOR_RESET!!!!!!!!!!!!!!!!!!!\n");*/
 				break;
 			}
 		case MOTOR_MOVE:
@@ -655,13 +639,12 @@ static long motor_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 					return -EFAULT;
 				}
 				ret = motor_ops_move(mdev, dst.x, dst.y);
-				/*printk("MOTOR_MOVE!!!!!!!!!!!!!!!!!!!\n");*/
 			}
 			break;
 		case MOTOR_GET_STATUS:
 			{
 				struct motor_message msg;
-
+ 
 				motor_get_message(mdev, &msg);
 				if (copy_to_user((void __user *)arg, &msg,
 							sizeof(struct motor_message))) {
@@ -670,49 +653,45 @@ static long motor_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 					return -EFAULT;
 				}
 			}
-			/*printk("MOTOR_GET_STATUS!!!!!!!!!!!!!!!!!!\n");*/
 			break;
 		case MOTOR_SPEED:
 			{
 				int speed;
-
+ 
 				if (copy_from_user(&speed, (void __user *)arg, sizeof(int))) {
 					dev_err(mdev->dev, "[%s][%d] copy to user error\n", __func__, __LINE__);
 					return -EFAULT;
 				}
-
+ 
 				motor_speed(mdev, speed);
 			}
-			/*printk("MOTOR_SPEED!!!!!!!!!!!!!!!!!!!!!!!\n");*/
 			break;
 		case MOTOR_GOBACK:
-			/*printk("MOTOR_GOBACK!!!!!!!!!!!!!!!!!!!!!!!\n");*/
 			ret = motor_ops_goback(mdev);
 			break;
 		case MOTOR_CRUISE:
-			/*printk("MOTOR_CRUISE!!!!!!!!!!!!!!!!!!!!!!!\n");*/
 			ret = motor_ops_cruise(mdev);
 			break;
 		default:
 			return -EINVAL;
 	}
-
+ 
 	return ret;
 }
-
+ 
 static struct file_operations motor_fops = {
 	.open = motor_open,
 	.release = motor_release,
 	.unlocked_ioctl = motor_ioctl,
 };
-
+ 
 static int motor_info_show(struct seq_file *m, void *v)
 {
 	int len = 0;
 	struct motor_device *mdev = (struct motor_device *)(m->private);
 	struct motor_message msg;
 	int index = 0;
-
+ 
 	seq_printf(m ,"The version of Motor driver is %s\n",JZ_MOTOR_DRIVER_VERSION);
 	seq_printf(m ,"Motor driver is %s\n", mdev->flag?"opened":"closed");
 	seq_printf(m ,"The max speed is %d and the min speed is %d\n", MOTOR_MAX_SPEED, MOTOR_MIN_SPEED);
@@ -720,7 +699,7 @@ static int motor_info_show(struct seq_file *m, void *v)
 	seq_printf(m ,"The status of motor is %s\n", msg.status?"running":"stop");
 	seq_printf(m ,"The pos of motor is (%d, %d)\n", msg.x, msg.y);
 	seq_printf(m ,"The speed of motor is %d\n", msg.speed);
-
+ 
 	for(index = 0; index < HAS_MOTOR_CNT; index++){
 		seq_printf(m ,"## motor is %s ##\n", mdev->motors[index].pdata->name);
 		seq_printf(m ,"max steps %d\n", mdev->motors[index].max_steps);
@@ -729,43 +708,43 @@ static int motor_info_show(struct seq_file *m, void *v)
 		seq_printf(m ,"the irq's counter of max pos is %d\n", mdev->motors[index].max_pos_irq_cnt);
 		seq_printf(m ,"the irq's counter of min pos is %d\n", mdev->motors[index].min_pos_irq_cnt);
 	}
-
-    return len;
+ 
+	return len;
 }
-
+ 
 static int motor_info_open(struct inode *inode, struct file *file)
 {
 	return single_open_size(file, motor_info_show, PDE_DATA(inode), 1024);
 }
-
+ 
 static const struct file_operations motor_info_fops ={
 	.read = seq_read,
 	.open = motor_info_open,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
-
+ 
 static int motor_probe(struct platform_device *pdev)
 {
 	int i, ret = 0;
 	struct motor_device *mdev;
 	struct motor_driver *motor = NULL;
 	struct proc_dir_entry *proc;
-	//printk("%s%d\n",__func__,__LINE__);
+ 
 	mdev = devm_kzalloc(&pdev->dev, sizeof(struct motor_device), GFP_KERNEL);
 	if (!mdev) {
 		ret = -ENOENT;
 		dev_err(&pdev->dev, "kzalloc motor device memery error\n");
 		goto error_devm_kzalloc;
 	}
-
+ 
 	mdev->cell = mfd_get_cell(pdev);
 	if (!mdev->cell) {
 		ret = -ENOENT;
 		dev_err(&pdev->dev, "Failed to get mfd cell for jz_adc_aux!\n");
 		goto error_devm_kzalloc;
 	}
-
+ 
 	mdev->dev = &pdev->dev;
 	mdev->tcu = (struct ingenic_tcu_chn *)mdev->cell->platform_data;
 	mdev->tcu->irq_type = FULL_IRQ_MODE;
@@ -776,32 +755,45 @@ static int motor_probe(struct platform_device *pdev)
 	mdev->tcu->clk_div = TCU_PRESCALE_64;
 	ingenic_tcu_config(mdev->tcu);
 	ingenic_tcu_set_period(mdev->tcu->cib.id,(24000000 / 64 / mdev->tcu_speed));
-	//ingenic_tcu_counter_begin(mdev->tcu);
 	mutex_init(&mdev->dev_mutex);
 	spin_lock_init(&mdev->slock);
-
+ 
 	platform_set_drvdata(pdev, mdev);
-
-	/* GPIO-Pins aus Modulparametern uebernehmen */
+ 
+	/* Apply GPIO pins from module parameters */
 	motors_pdata[HORIZONTAL_MOTOR].motor_st1_gpio = hst1;
 	motors_pdata[HORIZONTAL_MOTOR].motor_st2_gpio = hst2;
 	motors_pdata[HORIZONTAL_MOTOR].motor_st3_gpio = hst3;
 	motors_pdata[HORIZONTAL_MOTOR].motor_st4_gpio = hst4;
-	motors_pdata[VERTICAL_MOTOR].motor_st1_gpio   = (vst1 != -1) ? vst1 : hst1;
-	motors_pdata[VERTICAL_MOTOR].motor_st2_gpio   = (vst2 != -1) ? vst2 : hst2;
-	motors_pdata[VERTICAL_MOTOR].motor_st3_gpio   = (vst3 != -1) ? vst3 : hst3;
-	motors_pdata[VERTICAL_MOTOR].motor_st4_gpio   = (vst4 != -1) ? vst4 : hst4;
-
+	motors_pdata[VERTICAL_MOTOR].motor_st1_gpio = (vst1 != -1) ? vst1 : hst1;
+	motors_pdata[VERTICAL_MOTOR].motor_st2_gpio = (vst2 != -1) ? vst2 : hst2;
+	motors_pdata[VERTICAL_MOTOR].motor_st3_gpio = (vst3 != -1) ? vst3 : hst3;
+	motors_pdata[VERTICAL_MOTOR].motor_st4_gpio = (vst4 != -1) ? vst4 : hst4;
+ 
+	/* Apply max steps from module parameters */
+	motors_pdata[HORIZONTAL_MOTOR].motor_min_gpio = HORIZONTAL_MIN_GPIO;
+	motors_pdata[HORIZONTAL_MOTOR].motor_max_gpio = HORIZONTAL_MAX_GPIO;
+	motors_pdata[VERTICAL_MOTOR].motor_min_gpio = VERTICAL_MIN_GPIO;
+	motors_pdata[VERTICAL_MOTOR].motor_max_gpio = VERTICAL_MAX_GPIO;
+ 
+	printk("motor: pan GPIOs %d/%d/%d/%d tilt GPIOs %d/%d/%d/%d\n",
+		hst1, hst2, hst3, hst4,
+		motors_pdata[VERTICAL_MOTOR].motor_st1_gpio,
+		motors_pdata[VERTICAL_MOTOR].motor_st2_gpio,
+		motors_pdata[VERTICAL_MOTOR].motor_st3_gpio,
+		motors_pdata[VERTICAL_MOTOR].motor_st4_gpio);
+ 
 	for(i = 0; i < HAS_MOTOR_CNT; i++) {
 		motor = &(mdev->motors[i]);
 		motor->pdata = &motors_pdata[i];
 		motor->move_dir	= MOTOR_MOVE_STOP;
+		motor->max_steps = (i == HORIZONTAL_MOTOR) ? hmaxstep : vmaxstep;
 		init_completion(&motor->reset_completion);
-
+ 
 		if (motor->pdata->motor_min_gpio != -1) {
 			gpio_request(motor->pdata->motor_min_gpio, "motor_min_gpio");
 			motor->min_pos_irq = gpio_to_irq(motor->pdata->motor_min_gpio);
-
+ 
 			ret = request_irq(motor->min_pos_irq,
 					motor_min_gpio_interrupt,
 					(motor->pdata->motor_gpio_level ?
@@ -814,12 +806,12 @@ static int motor_probe(struct platform_device *pdev)
 				motor->min_pos_irq = 0;
 				goto error_min_gpio;
 			}
-
+ 
 		}
 		if (motor->pdata->motor_max_gpio != -1) {
 			gpio_request(motor->pdata->motor_max_gpio, "motor_max_gpio");
 			motor->max_pos_irq = gpio_to_irq(motor->pdata->motor_max_gpio);
-
+ 
 			ret = request_irq(motor->max_pos_irq,
 					motor_max_gpio_interrupt,
 					(motor->pdata->motor_gpio_level ?
@@ -833,7 +825,7 @@ static int motor_probe(struct platform_device *pdev)
 				goto error_max_gpio;
 			}
 		}
-
+ 
 		if (motor->pdata->motor_st1_gpio != -1) {
 			gpio_request(motor->pdata->motor_st1_gpio, "motor_st1_gpio");
 		}
@@ -846,7 +838,7 @@ static int motor_probe(struct platform_device *pdev)
 		if (motor->pdata->motor_st4_gpio != -1) {
 			gpio_request(motor->pdata->motor_st4_gpio, "motor_st4_gpio");
 		}
-
+ 
 		setup_timer(&motor->min_timer,
 			    gpio_keys_min_timer, (unsigned long)motor);
 		setup_timer(&motor->max_timer,
@@ -862,14 +854,14 @@ static int motor_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to get platform irq: %d\n", ret);
 		goto error_get_irq;
 	}
-
+ 
 	ret = request_irq(mdev->run_step_irq, jz_timer_interrupt, 0,
 				"jz_timer_interrupt", mdev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to run request_irq() !\n");
 		goto error_request_irq;
 	}
-
+ 
 	mdev->misc_dev.minor = MISC_DYNAMIC_MINOR;
 	mdev->misc_dev.name = "motor";
 	mdev->misc_dev.fops = &motor_fops;
@@ -879,7 +871,7 @@ static int motor_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "misc_register failed\n");
 		goto error_misc_register;
 	}
-
+ 
 	/* debug info */
 	proc = jz_proc_mkdir("motor");
 	if (!proc) {
@@ -889,14 +881,14 @@ static int motor_probe(struct platform_device *pdev)
 		mdev->proc = proc;
 	}
 	proc_create_data("motor_info", S_IRUGO, proc, &motor_info_fops, (void *)mdev);
-
+ 
 	motor_set_default(mdev);
 	mdev->flag = 0;
 	ingenic_tcu_counter_begin(mdev->tcu);
-
-	//printk("%s%d\n",__func__,__LINE__);
+ 
+	printk("motor: probe ok (pan=%d steps, tilt=%d steps)\n", hmaxstep, vmaxstep);
 	return 0;
-
+ 
 error_misc_register:
 	free_irq(mdev->run_step_irq, mdev);
 error_request_irq:
@@ -917,13 +909,13 @@ error_min_gpio:
 		}
 		if (motor->pdata->motor_st1_gpio != -1)
 			gpio_free(motor->pdata->motor_st1_gpio);
-
+ 
 		if (motor->pdata->motor_st2_gpio != -1)
 			gpio_free(motor->pdata->motor_st2_gpio);
-
+ 
 		if (motor->pdata->motor_st3_gpio != -1)
 			gpio_free(motor->pdata->motor_st3_gpio);
-
+ 
 		if (motor->pdata->motor_st4_gpio != -1)
 			gpio_free(motor->pdata->motor_st4_gpio);
 		motor->pdata = 0;
@@ -936,7 +928,7 @@ error_min_gpio:
 error_devm_kzalloc:
 	return ret;
 }
-
+ 
 static int motor_remove(struct platform_device *pdev)
 {
 	int i;
@@ -944,7 +936,7 @@ static int motor_remove(struct platform_device *pdev)
 	struct motor_driver *motor = NULL;
 	ingenic_tcu_counter_stop(mdev->tcu);
 	mutex_destroy(&mdev->dev_mutex);
-
+ 
 	free_irq(mdev->run_step_irq, mdev);
 	for(i = 0; i < HAS_MOTOR_CNT; i++) {
 		motor = &(mdev->motors[i]);
@@ -960,13 +952,13 @@ static int motor_remove(struct platform_device *pdev)
 		}
 		if (motor->pdata->motor_st1_gpio != -1)
 			gpio_free(motor->pdata->motor_st1_gpio);
-
+ 
 		if (motor->pdata->motor_st2_gpio != -1)
 			gpio_free(motor->pdata->motor_st2_gpio);
-
+ 
 		if (motor->pdata->motor_st3_gpio != -1)
 			gpio_free(motor->pdata->motor_st3_gpio);
-
+ 
 		if (motor->pdata->motor_st4_gpio != -1)
 			gpio_free(motor->pdata->motor_st4_gpio);
 		motor->pdata = 0;
@@ -977,37 +969,43 @@ static int motor_remove(struct platform_device *pdev)
 		del_timer_sync(&motor->min_timer);
 		del_timer_sync(&motor->max_timer);
 	}
-
+ 
 	if (mdev->proc)
 		proc_remove(mdev->proc);
-
+ 
 	misc_deregister(&mdev->misc_dev);
-
+ 
 	kfree(mdev);
 	return 0;
 }
-
+ 
+/* Driver name built dynamically from motor_bind_channel parameter */
+static char motor_driver_name[32];
+ 
 static struct platform_driver motor_driver = {
 	.probe = motor_probe,
 	.remove = motor_remove,
 	.driver = {
-		.name	= "tcu_chn2",
+		.name	= motor_driver_name,
 		.owner	= THIS_MODULE,
 	}
 };
-
+ 
 static int __init motor_init(void)
 {
+	snprintf(motor_driver_name, sizeof(motor_driver_name),
+		 "ingenic,tcu_chn%d", motor_bind_channel);
+	printk("motor: registering driver for '%s'\n", motor_driver_name);
 	return platform_driver_register(&motor_driver);
 }
-
+ 
 static void __exit motor_exit(void)
 {
 	platform_driver_unregister(&motor_driver);
 }
-
+ 
 module_init(motor_init);
 module_exit(motor_exit);
-
+ 
 MODULE_LICENSE("GPL");
-
+ 
