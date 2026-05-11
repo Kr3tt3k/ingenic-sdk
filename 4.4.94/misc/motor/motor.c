@@ -506,12 +506,37 @@ static long motor_ops_reset(struct motor_device *mdev, struct motor_reset_data *
 		mdev->motors[VERTICAL_MOTOR].cur_steps = rdata->y_cur_step;
 		spin_unlock_irqrestore(&mdev->slock, flags);
 		mutex_unlock(&mdev->dev_mutex);
+	}else if(motors_pdata[HORIZONTAL_MOTOR].motor_min_gpio == -1 &&
+		 motors_pdata[HORIZONTAL_MOTOR].motor_max_gpio == -1 &&
+		 motors_pdata[VERTICAL_MOTOR].motor_min_gpio == -1 &&
+		 motors_pdata[VERTICAL_MOTOR].motor_max_gpio == -1){
+		/* No endstops: use module param max steps, set virtual center position */
+		mutex_lock(&mdev->dev_mutex);
+		spin_lock_irqsave(&mdev->slock, flags);
+		mdev->motors[HORIZONTAL_MOTOR].max_steps = hmaxstep;
+		mdev->motors[HORIZONTAL_MOTOR].cur_steps = hmaxstep / 2;
+		mdev->motors[HORIZONTAL_MOTOR].state = MOTOR_OPS_STOP;
+		mdev->motors[VERTICAL_MOTOR].max_steps = vmaxstep;
+		mdev->motors[VERTICAL_MOTOR].cur_steps = vmaxstep / 2;
+		mdev->motors[VERTICAL_MOTOR].state = MOTOR_OPS_STOP;
+		mdev->dev_state = MOTOR_OPS_STOP;
+		spin_unlock_irqrestore(&mdev->slock, flags);
+		mutex_unlock(&mdev->dev_mutex);
+		/* Sync data back to caller */
+		rdata->x_max_steps = hmaxstep;
+		rdata->x_cur_step  = hmaxstep / 2;
+		rdata->y_max_steps = vmaxstep;
+		rdata->y_cur_step  = vmaxstep / 2;
+		return 0;
 	}else{
-		/* driver calculate max steps. */
+		/* driver calculate max steps using hardware endstops */
 		mutex_lock(&mdev->dev_mutex);
 		spin_lock_irqsave(&mdev->slock, flags);
 		for(index = 0; index < HAS_MOTOR_CNT; index++){
-			value = gpio_get_value(mdev->motors[index].pdata->motor_max_gpio);
+			if(mdev->motors[index].pdata->motor_max_gpio != -1)
+				value = gpio_get_value(mdev->motors[index].pdata->motor_max_gpio);
+			else
+				value = 0;
 			if(value == mdev->motors[index].pdata->motor_gpio_level){
 				mdev->motors[index].move_dir = MOTOR_MOVE_LEFT_DOWN;
 			}else
